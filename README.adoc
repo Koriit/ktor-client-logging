@@ -1,3 +1,22 @@
 = Ktor Client Logging
 
+image:https://www.travis-ci.org/Koriit/ktor-client-logging.svg?branch=master["Build Status", link="https://www.travis-ci.org/Koriit/ktor-client-logging"]
+image:https://www.codefactor.io/repository/github/koriit/ktor-client-logging/badge[CodeFactor,link=https://www.codefactor.io/repository/github/koriit/ktor-client-logging]
+image:https://img.shields.io/badge/code%20style-%E2%9D%A4-FF4081.svg[ktlint,link=https://ktlint.github.io/]
+
+image:https://api.bintray.com/packages/koriit/kotlin/ktor-client-logging/images/download.svg[Download, link=https://bintray.com/koriit/kotlin/ktor-client-logging/_latestVersion]
+image:https://img.shields.io/github/license/koriit/ktor-client-logging[GitHub]
+
 Logging feature for Ktor-Client
+
+== Installation
+[source,kotlin]
+----
+HttpClient {
+    install(ClientLogging) {
+        logFullUrl = true
+        logHeaders = false
+        logBody = false
+    }
+}
+----

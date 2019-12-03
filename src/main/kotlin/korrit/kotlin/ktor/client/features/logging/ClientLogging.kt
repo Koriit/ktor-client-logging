@@ -27,81 +27,104 @@ import kotlinx.io.charsets.Charset
 import kotlinx.io.core.readText
 import org.slf4j.Logger
 
+/**
+ * Logging client feature. Allows logging performance, requests and responses.
+ */
 open class ClientLogging(config: Config) {
 
-    private val LOG = config.logger ?: logger {}
+    private val log = config.logger ?: logger {}
 
     protected open val fullUrl = config.logFullUrl
     protected open val headers = config.logHeaders
     protected open val body = config.logBody
 
+    /**
+     * Feature configuration.
+     */
     open class Config {
+        /**
+         * Custom logger instance.
+         */
         var logger: Logger? = null
 
+        /**
+         * Whether to log full request/response urls.
+         *
+         * WARN: url queries may contain sensitive data.
+         */
         var logFullUrl = false
+
+        /**
+         * Whether to log request/response headers.
+         *
+         * WARN: headers may contain sensitive data.
+         */
         var logHeaders = false
+
+        /**
+         * Whether to log request/response payloads.
+         *
+         * WARN: payloads may contain sensitive data.
+         */
         var logBody = false
     }
 
     protected open suspend fun logRequest(request: HttpRequestBuilder) {
-        val log = StringBuilder()
-        if (fullUrl) {
-            log.append("Sending request: ${request.method.value} ${Url(request.url)}")
-        } else {
-            log.append("Sending request: ${request.method.value} ${request.url.host}")
-        }
+        log.info(StringBuilder().apply {
+            if (fullUrl) {
+                append("Sending request: ${request.method.value} ${Url(request.url)}")
+            } else {
+                append("Sending request: ${request.method.value} ${request.url.host}")
+            }
 
-        val content = request.body as OutgoingContent
+            val content = request.body as OutgoingContent
 
-        if (headers) appendHeaders(log, request.headers.entries(), content.headers)
-        if (body) appendRequestBody(log, content)
-
-        LOG.info(log.toString())
+            if (headers) appendHeaders(request.headers.entries(), content.headers)
+            if (body) appendRequestBody(content)
+        }.toString())
     }
 
     protected open suspend fun logResponse(response: HttpResponse) = response.use {
-        val log = StringBuilder()
-        val duration = response.responseTime.timestamp - response.requestTime.timestamp
+        log.info(StringBuilder().apply {
+            val duration = response.responseTime.timestamp - response.requestTime.timestamp
 
-        if (fullUrl) {
-            log.append("Received response: $duration ms - ${response.status.value} - ${response.call.request.method.value} ${response.call.request.url}")
-        } else {
-            log.append("Received response: $duration ms - ${response.status.value} - ${response.call.request.method.value} ${response.call.request.url.host}")
-        }
+            if (fullUrl) {
+                append("Received response: $duration ms - ${response.status.value} - ${response.call.request.method.value} ${response.call.request.url}")
+            } else {
+                append("Received response: $duration ms - ${response.status.value} - ${response.call.request.method.value} ${response.call.request.url.host}")
+            }
 
-        if (headers) appendHeaders(log, response.headers.entries())
+            if (headers) appendHeaders(response.headers.entries())
 
-        if (body) {
-            appendResponseBody(log, response.contentType(), response.content)
-        } else {
-            response.content.discard()
-        }
-
-        LOG.info(log.toString())
+            if (body) {
+                appendResponseBody(response.contentType(), response.content)
+            } else {
+                response.content.discard()
+            }
+        }.toString())
     }
 
-    protected open fun appendHeaders(
-            log: StringBuilder,
-            requestHeaders: Set<Map.Entry<String, List<String>>>,
-            contentHeaders: Headers? = null
+    protected open fun StringBuilder.appendHeaders(
+        requestHeaders: Set<Map.Entry<String, List<String>>>,
+        contentHeaders: Headers? = null
     ) {
-        log.appendln()
+        appendln()
         requestHeaders.forEach { (header, values) ->
-            log.appendln("$header: ${values.joinToString("; ")}")
+            appendln("$header: ${values.joinToString("; ")}")
         }
 
         contentHeaders?.forEach { header, values ->
-            log.appendln("$header: ${values.joinToString("; ")}")
+            appendln("$header: ${values.joinToString("; ")}")
         }
     }
 
-    protected open suspend fun appendResponseBody(log: StringBuilder, contentType: ContentType?, content: ByteReadChannel) {
-        log.appendln()
-        log.appendln(content.readText(contentType?.charset() ?: Charsets.UTF_8))
+    protected open suspend fun StringBuilder.appendResponseBody(contentType: ContentType?, content: ByteReadChannel) {
+        appendln()
+        appendln(content.readText(contentType?.charset() ?: Charsets.UTF_8))
     }
 
-    protected open suspend fun appendRequestBody(log: StringBuilder, content: OutgoingContent) {
-        log.appendln()
+    protected open suspend fun StringBuilder.appendRequestBody(content: OutgoingContent) {
+        appendln()
         val charset = content.contentType?.charset() ?: Charsets.UTF_8
 
         val text = when (content) {
@@ -119,30 +142,37 @@ open class ClientLogging(config: Config) {
             is OutgoingContent.ByteArrayContent -> kotlinx.io.core.String(content.bytes(), charset = charset)
             else -> null
         }
-        text?.let { log.appendln(it) }
+        text?.let { appendln(it) }
     }
 
-
+    /**
+     * Feature installation.
+     */
     protected open fun install(scope: HttpClient) {
         scope.sendPipeline.intercept(HttpSendPipeline.Before) {
+            @Suppress("TooGenericExceptionCaught") // intended
             try {
                 logRequest(context)
             } catch (e: Throwable) {
-                LOG.warn(e.message, e)
+                log.warn(e.message, e)
             }
         }
 
         val observer: ResponseHandler = {
+            @Suppress("TooGenericExceptionCaught") // intended
             try {
                 logResponse(it)
             } catch (e: Throwable) {
-                LOG.warn(e.message, e)
+                log.warn(e.message, e)
             }
         }
 
         ResponseObserver.install(ResponseObserver(observer), scope)
     }
 
+    /**
+     * Feature installation object.
+     */
     companion object : HttpClientFeature<Config, ClientLogging> {
         override val key: AttributeKey<ClientLogging> = AttributeKey("ClientLogging")
 
@@ -154,8 +184,10 @@ open class ClientLogging(config: Config) {
         override fun install(feature: ClientLogging, scope: HttpClient) {
             feature.install(scope)
         }
-
     }
 }
 
+/**
+ * Read all remaining text in the channel.
+ */
 suspend fun ByteReadChannel.readText(charset: Charset): String = readRemaining().readText(charset = charset)
