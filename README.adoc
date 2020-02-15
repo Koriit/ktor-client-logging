@@ -17,6 +17,24 @@ HttpClient {
         logFullUrl = true
         logHeaders = false
         logBody = false
+        logger = ... // optionally your logger object
     }
 }
 ----
+
+== Experimental status
+Logging for Ktor Client uses some experimental Ktor API and therefore unfortunately there is no
+guarantee that there will no compatibility breaks between Ktor versions.
+
+As a matter of fact, that's exactly what happened between versions `1.2` and `1.3`.
+
+Keep that in mind.
+
+== Ktor support
+|===
+| Ktor version | Ktor-Logging version
+
+| 1.3 | >= 0.2
+| 1.2 | \<= 0.1
+|===
+

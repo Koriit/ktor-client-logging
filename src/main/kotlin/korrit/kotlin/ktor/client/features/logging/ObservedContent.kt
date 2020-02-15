@@ -1,0 +1,57 @@
+package korrit.kotlin.ktor.client.features.logging
+
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.http.content.OutgoingContent
+import io.ktor.util.KtorExperimentalAPI
+import io.ktor.util.pipeline.PipelineContext
+import io.ktor.util.split
+import io.ktor.utils.io.ByteChannel
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.writeFully
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+internal class ObservedContent(private val channel: ByteReadChannel) : OutgoingContent.ReadChannelContent() {
+    override fun readFrom(): ByteReadChannel = channel
+}
+
+@KtorExperimentalAPI
+internal suspend fun PipelineContext<Any, HttpRequestBuilder>.observe(): Pair<ByteReadChannel, OutgoingContent> {
+    return when (val body = context.body) {
+        is OutgoingContent.ByteArrayContent -> {
+            val observer = ByteChannel().apply {
+                writeFully(body.bytes())
+                close(null)
+            }
+
+            observer to body
+        }
+        is OutgoingContent.ReadChannelContent -> {
+            val (observer, observed) = body.readFrom().split(this)
+
+            observer to ObservedContent(observed)
+        }
+        is OutgoingContent.WriteChannelContent -> {
+            val (observer, observed) = body.toReadChannel(this).split(this)
+
+            observer to ObservedContent(observed)
+        }
+        else -> {
+            val emptyObserver = ByteChannel().apply {
+                close(null)
+            }
+
+            emptyObserver to body as OutgoingContent
+        }
+    }
+}
+
+private fun OutgoingContent.WriteChannelContent.toReadChannel(scope: CoroutineScope): ByteReadChannel {
+    val channel = ByteChannel()
+    scope.launch(Dispatchers.Unconfined) {
+        writeTo(channel)
+        channel.close(null)
+    }
+    return channel
+}

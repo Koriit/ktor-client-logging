@@ -6,7 +6,7 @@ import io.ktor.client.features.observer.ResponseHandler
 import io.ktor.client.features.observer.ResponseObserver
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.HttpSendPipeline
-import io.ktor.client.response.HttpResponse
+import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.Url
@@ -14,17 +14,15 @@ import io.ktor.http.charset
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.contentType
 import io.ktor.util.AttributeKey
+import io.ktor.util.KtorExperimentalAPI
+import io.ktor.util.pipeline.PipelineContext
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.core.readText
+import io.ktor.utils.io.discard
+import io.ktor.utils.io.readRemaining
 import koriit.kotlin.slf4j.logger
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.io.ByteChannel
-import kotlinx.coroutines.io.ByteReadChannel
-import kotlinx.coroutines.io.close
-import kotlinx.coroutines.io.discard
-import kotlinx.coroutines.io.readRemaining
 import kotlinx.coroutines.launch
-import kotlinx.io.charsets.Charset
-import kotlinx.io.core.readText
 import org.slf4j.Logger
 
 /**
@@ -71,20 +69,33 @@ open class ClientLogging(config: Config) {
 
     protected open suspend fun logRequest(request: HttpRequestBuilder) {
         log.info(StringBuilder().apply {
-            if (fullUrl) {
-                append("Sending request: ${request.method.value} ${Url(request.url)}")
-            } else {
-                append("Sending request: ${request.method.value} ${request.url.host}")
-            }
-
-            val content = request.body as OutgoingContent
-
-            if (headers) appendHeaders(request.headers.entries(), content.headers)
-            if (body) appendRequestBody(content)
+            appendRequest(request)
         }.toString())
     }
 
-    protected open suspend fun logResponse(response: HttpResponse) = response.use {
+    @KtorExperimentalAPI
+    private suspend fun logRequestWithBody(pipeline: PipelineContext<Any, HttpRequestBuilder>): OutgoingContent {
+        val request = pipeline.context
+        val content = request.body as OutgoingContent
+        val charset = content.contentType?.charset() ?: Charsets.UTF_8
+
+        // logging a request body is harder than logging a response body because
+        // there is no public api for observing request body stream
+        val (observer, observed) = pipeline.observe()
+        pipeline.launch(Dispatchers.Unconfined) {
+            val requestBody = observer.readRemaining().readText(charset = charset)
+
+            log.info(StringBuilder().apply {
+                appendRequest(request)
+                // new line after body because in the log there might be additional info after "log message"
+                appendln(requestBody)
+            }.toString())
+        }
+
+        return observed
+    }
+
+    protected open suspend fun logResponse(response: HttpResponse) {
         log.info(StringBuilder().apply {
             val duration = response.responseTime.timestamp - response.requestTime.timestamp
 
@@ -118,44 +129,43 @@ open class ClientLogging(config: Config) {
         }
     }
 
-    protected open suspend fun StringBuilder.appendResponseBody(contentType: ContentType?, content: ByteReadChannel) {
-        appendln()
-        appendln(content.readText(contentType?.charset() ?: Charsets.UTF_8))
+    protected open fun StringBuilder.appendRequest(request: HttpRequestBuilder) {
+        if (fullUrl) {
+            append("Sending request: ${request.method.value} ${Url(request.url)}")
+        } else {
+            append("Sending request: ${request.method.value} ${request.url.host}")
+        }
+
+        val content = request.body as OutgoingContent
+
+        if (headers) appendHeaders(request.headers.entries(), content.headers)
     }
 
-    protected open suspend fun StringBuilder.appendRequestBody(content: OutgoingContent) {
+    protected open suspend fun StringBuilder.appendResponseBody(contentType: ContentType?, content: ByteReadChannel) {
         appendln()
-        val charset = content.contentType?.charset() ?: Charsets.UTF_8
-
-        val text = when (content) {
-            is OutgoingContent.WriteChannelContent -> {
-                val textChannel = ByteChannel()
-                GlobalScope.launch(Dispatchers.Unconfined) {
-                    content.writeTo(textChannel)
-                    textChannel.close()
-                }
-                textChannel.readText(charset)
-            }
-            is OutgoingContent.ReadChannelContent -> {
-                content.readFrom().readText(charset)
-            }
-            is OutgoingContent.ByteArrayContent -> kotlinx.io.core.String(content.bytes(), charset = charset)
-            else -> null
-        }
-        text?.let { appendln(it) }
+        // new line after body because in the log there might be additional info after "log message"
+        appendln(content.readRemaining().readText(charset = contentType?.charset() ?: Charsets.UTF_8))
     }
 
     /**
      * Feature installation.
      */
+    @KtorExperimentalAPI
     protected open fun install(scope: HttpClient) {
-        scope.sendPipeline.intercept(HttpSendPipeline.Before) {
+        scope.sendPipeline.intercept(HttpSendPipeline.Monitoring) {
+            var response = subject
             @Suppress("TooGenericExceptionCaught") // intended
             try {
-                logRequest(context)
+                if (body) {
+                    response = logRequestWithBody(this)
+                } else {
+                    logRequest(context)
+                }
             } catch (e: Throwable) {
                 log.warn(e.message, e)
             }
+
+            proceedWith(response)
         }
 
         val observer: ResponseHandler = {
@@ -173,6 +183,7 @@ open class ClientLogging(config: Config) {
     /**
      * Feature installation object.
      */
+    @KtorExperimentalAPI
     companion object : HttpClientFeature<Config, ClientLogging> {
         override val key: AttributeKey<ClientLogging> = AttributeKey("ClientLogging")
 
@@ -186,8 +197,3 @@ open class ClientLogging(config: Config) {
         }
     }
 }
-
-/**
- * Read all remaining text in the channel.
- */
-suspend fun ByteReadChannel.readText(charset: Charset): String = readRemaining().readText(charset = charset)
