@@ -1,5 +1,7 @@
 package korrit.kotlin.ktor.client.features.logging
 
+import com.koriit.kotlin.slf4j.logger
+import com.koriit.kotlin.slf4j.mdc.correlation.correlateThread
 import io.ktor.client.HttpClient
 import io.ktor.client.content.LocalFileContent
 import io.ktor.client.engine.mock.MockEngine
@@ -12,11 +14,10 @@ import io.ktor.http.content.OutputStreamContent
 import io.ktor.http.headersOf
 import io.mockk.spyk
 import io.mockk.verify
-import java.io.File
-import koriit.kotlin.slf4j.logger
-import koriit.kotlin.slf4j.mdc.correlation.correlateThread
 import kotlinx.coroutines.runBlocking
+import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.Test
+import java.io.File
 
 internal class ClientLoggingTest {
 
@@ -68,7 +69,7 @@ internal class ClientLoggingTest {
     }
 
     @Test
-    fun `Should log rader-channel requests and responses`() {
+    fun `Should log reader-channel requests and responses`() {
         runBlocking {
             client.post<String>("/") {
                 body = LocalFileContent(File(javaClass.getResource("/sample_body.json").toURI()))
@@ -92,4 +93,65 @@ internal class ClientLoggingTest {
         }
         verify(exactly = 2) { log.info(any()) }
     }
+
+    @Test
+    fun `Should log body, full url and headers`() {
+        runBlocking {
+            client.post<String>("/api?queryParam=true") {
+                headers.append("My-Header", "My-Request-Value")
+                body = "SOME_BODY"
+            }
+        }
+        val payloads = mutableListOf<String>()
+
+        verify(exactly = 2) {
+            log.info(
+                withArg {
+                    payloads.add(it)
+                }
+            )
+        }
+        val request = payloads[0]
+        Assertions.assertTrue(request.contains("POST"))
+        Assertions.assertTrue(request.contains("/api?queryParam=true"))
+        Assertions.assertTrue(request.contains("My-Header"))
+        Assertions.assertTrue(request.contains("My-Request-Value"))
+        Assertions.assertTrue(request.contains("SOME_BODY"))
+
+        val response = payloads[1]
+        Assertions.assertTrue(response.contains("200"))
+        Assertions.assertTrue(response.contains("My-Header"))
+        Assertions.assertTrue(response.contains("My-Value"))
+        Assertions.assertTrue(response.contains("SOME_BODY"))
+    }
+
+    @Test
+    fun `Should log body and return body`() {
+        val responseBody = runBlocking {
+            client.post<String>("/") {
+                body = "SOME_BODY"
+            }
+        }
+        val payloads = mutableListOf<String>()
+
+        verify(exactly = 2) {
+            log.info(
+                withArg {
+                    payloads.add(it)
+                }
+            )
+        }
+
+        Assertions.assertEquals("SOME_BODY", responseBody)
+
+        val request = payloads[0]
+        Assertions.assertTrue(request.contains("POST"))
+        Assertions.assertTrue(request.contains("SOME_BODY"))
+
+        val response = payloads[1]
+        Assertions.assertTrue(response.contains("200"))
+        Assertions.assertTrue(response.contains("SOME_BODY"))
+    }
+
+    // TODO add more tests as in server logging
 }

@@ -2,7 +2,6 @@ package korrit.kotlin.ktor.client.features.logging
 
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.content.OutgoingContent
-import io.ktor.util.KtorExperimentalAPI
 import io.ktor.util.pipeline.PipelineContext
 import io.ktor.util.split
 import io.ktor.utils.io.ByteChannel
@@ -16,7 +15,6 @@ internal class ObservedContent(private val channel: ByteReadChannel) : OutgoingC
     override fun readFrom(): ByteReadChannel = channel
 }
 
-@KtorExperimentalAPI
 internal suspend fun PipelineContext<Any, HttpRequestBuilder>.observe(): Pair<ByteReadChannel, OutgoingContent> {
     return when (val body = context.body) {
         is OutgoingContent.ByteArrayContent -> {

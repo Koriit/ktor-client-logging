@@ -3,14 +3,14 @@
 /////////////
 
 plugins {
-    id "org.jetbrains.kotlin.jvm" version "1.3.72"
+    id "org.jetbrains.kotlin.jvm" version "1.6.10"
     id "java-library"
     id "maven-publish"
     id "signing"
     id "jacoco"
-    id "org.jlleitschuh.gradle.ktlint" version "9.2.1"
-    id "io.gitlab.arturbosch.detekt" version "1.7.4"
-    id "com.github.ben-manes.versions" version "0.28.0"
+    id "org.jlleitschuh.gradle.ktlint" version "10.2.1"
+    id "io.gitlab.arturbosch.detekt" version "1.19.0"
+    id "com.github.ben-manes.versions" version "0.41.0"
 }
 
 //////////////////
@@ -18,30 +18,29 @@ plugins {
 //////////////////
 
 repositories {
-    jcenter()
     mavenCentral()
 }
 
 ext {
-    ktorVersion = "1.3.2"
+    ktorVersion = "1.6.7"
 }
 
 dependencies {
     // KOTLIN
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8"
-    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.5"
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.0'
 
     // KTOR
     implementation "io.ktor:ktor-client-core-jvm:$ktorVersion"
 
     // LOGGING
-    implementation "com.koriit.kotlin:slf4j-utils:0.7.1"
+    implementation "com.koriit.kotlin:slf4j-utils:0.8.0"
 
     // TESTING
-    testImplementation "org.junit.jupiter:junit-jupiter:5.6.1"
-    testImplementation "com.koriit.kotlin:slf4j-utils-logback:0.3.1"
+    testImplementation "org.junit.jupiter:junit-jupiter:5.8.2"
+    testImplementation "com.koriit.kotlin:slf4j-utils-logback:0.4.0"
     testImplementation "io.ktor:ktor-client-mock-jvm:$ktorVersion"
-    testImplementation "io.mockk:mockk:1.9.3"
+    testImplementation "io.mockk:mockk:1.12.2"
 }
 
 /////////////
@@ -80,9 +79,7 @@ compileKotlin {
 
 compileTestKotlin {
     kotlinOptions {
-        freeCompilerArgs += compilerArgs + [
-                "-Xuse-experimental=io.ktor.util.KtorExperimentalAPI"
-        ]
+        freeCompilerArgs += compilerArgs
         jvmTarget = "$targetCompatibility"
     }
 }
@@ -92,7 +89,7 @@ compileTestKotlin {
 //////////
 
 ktlint {
-    version = "0.36.0"
+    version = "0.43.2"
     verbose = true
 }
 
@@ -108,7 +105,7 @@ test {
 }
 
 jacoco {
-    toolVersion = "0.8.4"
+    toolVersion = "0.8.7"
 }
 
 if (!hasProperty("fast")) test.finalizedBy(jacocoTestReport)

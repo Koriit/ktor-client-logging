@@ -1,5 +1,6 @@
 package korrit.kotlin.ktor.client.features.logging
 
+import com.koriit.kotlin.slf4j.logger
 import io.ktor.client.HttpClient
 import io.ktor.client.features.HttpClientFeature
 import io.ktor.client.features.observer.ResponseHandler
@@ -14,13 +15,11 @@ import io.ktor.http.charset
 import io.ktor.http.content.OutgoingContent
 import io.ktor.http.contentType
 import io.ktor.util.AttributeKey
-import io.ktor.util.KtorExperimentalAPI
 import io.ktor.util.pipeline.PipelineContext
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.core.readText
 import io.ktor.utils.io.discard
 import io.ktor.utils.io.readRemaining
-import koriit.kotlin.slf4j.logger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.slf4j.Logger
@@ -67,14 +66,26 @@ open class ClientLogging(config: Config) {
         var logBody = false
     }
 
-    protected open suspend fun logRequest(request: HttpRequestBuilder) {
-        log.info(StringBuilder().apply {
-            appendRequest(request)
-        }.toString())
+    protected open suspend fun logRequest(pipeline: PipelineContext<Any, HttpRequestBuilder>): Any {
+        if (body) {
+            return logRequestWithBody(pipeline)
+        }
+
+        // Since we are not logging request body we can log immediately and continue pipeline normally
+        log.info(
+            StringBuilder().apply {
+                appendRequest(pipeline.context)
+            }.toString()
+        )
+
+        return pipeline.subject
     }
 
-    @KtorExperimentalAPI
-    private suspend fun logRequestWithBody(pipeline: PipelineContext<Any, HttpRequestBuilder>): OutgoingContent {
+    /**
+     * To log request payload we need to duplicate request stream
+     * which is why this function returns a new pipeline subject to proceed with.
+     */
+    protected suspend fun logRequestWithBody(pipeline: PipelineContext<Any, HttpRequestBuilder>): Any {
         val request = pipeline.context
         val content = request.body as OutgoingContent
         val charset = content.contentType?.charset() ?: Charsets.UTF_8
@@ -82,50 +93,59 @@ open class ClientLogging(config: Config) {
         // logging a request body is harder than logging a response body because
         // there is no public api for observing request body stream
         val (observer, observed) = pipeline.observe()
+        // launch a coroutine that will eventually log the request once it is fully written
         pipeline.launch(Dispatchers.Unconfined) {
             val requestBody = observer.readRemaining().readText(charset = charset)
 
-            log.info(StringBuilder().apply {
-                appendRequest(request)
-                // new line after body because in the log there might be additional info after "log message"
-                appendln(requestBody)
-            }.toString())
+            log.info(
+                StringBuilder().apply {
+                    appendRequest(request)
+                    // empty line before body as in HTTP request
+                    appendLine()
+                    append(requestBody)
+                    // new line after body because in the log there might be additional info after "log message"
+                    // and we don't want it to be mixed with logged body
+                    appendLine()
+                }.toString()
+            )
         }
 
         return observed
     }
 
     protected open suspend fun logResponse(response: HttpResponse) {
-        log.info(StringBuilder().apply {
-            val duration = response.responseTime.timestamp - response.requestTime.timestamp
+        log.info(
+            StringBuilder().apply {
+                val duration = response.responseTime.timestamp - response.requestTime.timestamp
 
-            if (fullUrl) {
-                append("Received response: $duration ms - ${response.status.value} - ${response.call.request.method.value} ${response.call.request.url}")
-            } else {
-                append("Received response: $duration ms - ${response.status.value} - ${response.call.request.method.value} ${response.call.request.url.host}")
-            }
+                if (fullUrl) {
+                    append("Received response: $duration ms - ${response.status.value} - ${response.call.request.method.value} ${response.call.request.url}")
+                } else {
+                    append("Received response: $duration ms - ${response.status.value} - ${response.call.request.method.value} ${response.call.request.url.host}")
+                }
 
-            if (headers) appendHeaders(response.headers.entries())
+                if (headers) appendHeaders(response.headers.entries())
 
-            if (body) {
-                appendResponseBody(response.contentType(), response.content)
-            } else {
-                response.content.discard()
-            }
-        }.toString())
+                if (body) {
+                    appendResponseBody(response.contentType(), response.content)
+                } else {
+                    response.content.discard()
+                }
+            }.toString()
+        )
     }
 
     protected open fun StringBuilder.appendHeaders(
         requestHeaders: Set<Map.Entry<String, List<String>>>,
         contentHeaders: Headers? = null
     ) {
-        appendln()
+        appendLine()
         requestHeaders.forEach { (header, values) ->
-            appendln("$header: ${values.joinToString("; ")}")
+            appendLine("$header: ${values.joinToString("; ")}")
         }
 
         contentHeaders?.forEach { header, values ->
-            appendln("$header: ${values.joinToString("; ")}")
+            appendLine("$header: ${values.joinToString("; ")}")
         }
     }
 
@@ -138,34 +158,28 @@ open class ClientLogging(config: Config) {
 
         val content = request.body as OutgoingContent
 
-        if (headers) appendHeaders(request.headers.entries(), content.headers)
+        if (headers) {
+            appendHeaders(request.headers.entries(), content.headers)
+        }
     }
 
     protected open suspend fun StringBuilder.appendResponseBody(contentType: ContentType?, content: ByteReadChannel) {
-        appendln()
+        appendLine()
         // new line after body because in the log there might be additional info after "log message"
-        appendln(content.readRemaining().readText(charset = contentType?.charset() ?: Charsets.UTF_8))
+        appendLine(content.readRemaining().readText(charset = contentType?.charset() ?: Charsets.UTF_8))
     }
 
     /**
      * Feature installation.
      */
-    @KtorExperimentalAPI
     protected open fun install(scope: HttpClient) {
         scope.sendPipeline.intercept(HttpSendPipeline.Monitoring) {
-            var response = subject
             @Suppress("TooGenericExceptionCaught") // intended
             try {
-                if (body) {
-                    response = logRequestWithBody(this)
-                } else {
-                    logRequest(context)
-                }
+                proceedWith(logRequest(this))
             } catch (e: Throwable) {
                 log.warn(e.message, e)
             }
-
-            proceedWith(response)
         }
 
         val observer: ResponseHandler = {
@@ -183,7 +197,6 @@ open class ClientLogging(config: Config) {
     /**
      * Feature installation object.
      */
-    @KtorExperimentalAPI
     companion object : HttpClientFeature<Config, ClientLogging> {
         override val key: AttributeKey<ClientLogging> = AttributeKey("ClientLogging")
 

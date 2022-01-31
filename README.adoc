@@ -34,7 +34,8 @@ Keep that in mind.
 |===
 | Ktor version | Ktor-Logging version
 
-| 1.3 | >= 0.2
-| 1.2 | \<= 0.1
+| 1.6 | >= 0.2
+| 1.3 |  0.2
+| 1.2 |  0.1
 |===
 
