@@ -1,10 +1,10 @@
 = Ktor Client Logging
 
-image:https://www.travis-ci.org/Koriit/ktor-client-logging.svg?branch=master["Build Status", link="https://www.travis-ci.org/Koriit/ktor-client-logging"]
+image:https://github.com/Koriit/ktor-client-logging/actions/workflows/build.yaml/badge.svg[Build, link="https://github.com/Koriit/ktor-client-logging/actions/workflows/build.yaml"]
 image:https://www.codefactor.io/repository/github/koriit/ktor-client-logging/badge[CodeFactor,link=https://www.codefactor.io/repository/github/koriit/ktor-client-logging]
 image:https://img.shields.io/badge/code%20style-%E2%9D%A4-FF4081.svg[ktlint,link=https://ktlint.github.io/]
 
-image:https://api.bintray.com/packages/koriit/kotlin/ktor-client-logging/images/download.svg[Download, link=https://bintray.com/koriit/kotlin/ktor-client-logging/_latestVersion]
+image:https://img.shields.io/maven-central/v/com.koriit.kotlin/ktor-client-logging.svg?label=Maven%20Central[Maven Central, link="https://search.maven.org/search?q=g:%22com.koriit.kotlin%22%20AND%20a:%22ktor-client-logging%22"]
 image:https://img.shields.io/github/license/koriit/ktor-client-logging[GitHub]
 
 Logging feature for Ktor-Client
