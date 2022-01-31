@@ -1,4 +1,4 @@
-package korrit.kotlin.ktor.client.features.logging
+package com.korrit.kotlin.ktor.client.features.logging
 
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.http.content.OutgoingContent

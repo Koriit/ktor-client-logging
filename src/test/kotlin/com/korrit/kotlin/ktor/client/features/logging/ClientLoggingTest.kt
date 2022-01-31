@@ -1,4 +1,4 @@
-package korrit.kotlin.ktor.client.features.logging
+package com.korrit.kotlin.ktor.client.features.logging
 
 import com.koriit.kotlin.slf4j.logger
 import com.koriit.kotlin.slf4j.mdc.correlation.correlateThread

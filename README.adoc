@@ -7,6 +7,8 @@ image:https://img.shields.io/badge/code%20style-%E2%9D%A4-FF4081.svg[ktlint,link
 image:https://img.shields.io/maven-central/v/com.koriit.kotlin/ktor-client-logging.svg?label=Maven%20Central[Maven Central, link="https://search.maven.org/search?q=g:%22com.koriit.kotlin%22%20AND%20a:%22ktor-client-logging%22"]
 image:https://img.shields.io/github/license/koriit/ktor-client-logging[GitHub]
 
+WARNING: From version 0.3.0 all package names have been renamed to match new artifact group id.
+
 Logging feature for Ktor-Client
 
 == Installation

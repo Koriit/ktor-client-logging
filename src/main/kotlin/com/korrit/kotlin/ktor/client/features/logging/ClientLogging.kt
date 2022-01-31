@@ -1,4 +1,4 @@
-package korrit.kotlin.ktor.client.features.logging
+package com.korrit.kotlin.ktor.client.features.logging
 
 import com.koriit.kotlin.slf4j.logger
 import io.ktor.client.HttpClient
@@ -64,6 +64,8 @@ open class ClientLogging(config: Config) {
          * WARN: payloads may contain sensitive data.
          */
         var logBody = false
+
+        // TODO add filtering
     }
 
     protected open suspend fun logRequest(pipeline: PipelineContext<Any, HttpRequestBuilder>): Any {
